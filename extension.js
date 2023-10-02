@@ -37,6 +37,7 @@ class WindowState {
         this._rect = window.get_frame_rect();
         this._maximized = window.get_maximized();
         this._minimized = window.minimized;
+        this._workspaceIndex=window.get_workspace().index();
         // The following are only used for logging
         this._fullscreen = window.fullscreen;
         this._id = window.get_id();
@@ -52,6 +53,10 @@ class WindowState {
             `minimized:${this._minimized}, fullscreen:${this._fullscreen}, id:${this._id}, title:${this._title}`;
     }
 
+    getWorkspaceIndex(){
+        return this._workspaceIndex;
+    }
+
     restore(currentWindow) {
         if (!this._equalRect(currentWindow)) {
             if (currentWindow.get_maximized())
@@ -60,6 +65,7 @@ class WindowState {
         }
         this._setMaximized(currentWindow);
         this._setMinimized(currentWindow);
+        this._setWorkspace(currentWindow);
         this._logDifferences(currentWindow);
     }
 
@@ -89,6 +95,12 @@ class WindowState {
                 window.minimize();
             else
                 window.unminimize();
+        }
+    }
+
+    _setWorkspace(window) {
+        if (window.get_workspace().index() !== this._workspaceIndex) {
+            window.change_workspace_by_index(this._workspaceIndex, true);
         }
     }
 
@@ -145,11 +157,16 @@ class AllWindowsStates {
 
     restoreWindowPositions(why) {
         const windowId__state = this._getWindowStateMap(why);
+        let windowList=[];
         for (const window of this._getWindows()) {
             if (windowId__state.has(window.get_id()))
-                windowId__state.get(window.get_id()).restore(window);
+                windowList.push([windowId__state.get(window.get_id()), window]);
             else if (this._log >= LOG_DEBUG)
                 global.log(`${EXTENSION_LOG_NAME} ${why} did not find: ${window.get_id()} ${window.get_title()}`);
+        }
+        windowList.sort( (a, b) => {return a[0].getWorkspaceIndex() - b[0].getWorkspaceIndex();});
+        for (const [state, window] of windowList) {
+            state.restore(window);
         }
     }
 }
@@ -184,7 +201,7 @@ function _refreshState() {
 
 function enable() {
     _allWindowsStates = new AllWindowsStates(LOG_LEVEL);
-    _interval = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 5000, () => {
+    _interval = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1000, () => {
         _refreshState();
         return GLib.SOURCE_CONTINUE;
     });
